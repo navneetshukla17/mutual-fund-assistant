@@ -617,21 +617,24 @@ html, body {
     transform: scale(0.95);
 }
 
-/* Send button in generating/stop state (ChatGPT & Claude style) */
-.capsule-send-btn.is-generating {
+/* Stop button in generating/voice recording state (ChatGPT & Claude style) */
+.capsule-send-btn.is-generating,
+.capsule-mic-btn.is-active-recording {
     background: #000000 !important;
     color: #ffffff !important;
     cursor: pointer !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
 }
 
-.capsule-send-btn.is-generating:hover {
+.capsule-send-btn.is-generating:hover,
+.capsule-mic-btn.is-active-recording:hover {
     background: #111111 !important;
     color: #ffffff !important;
     transform: scale(1.06);
 }
 
-.capsule-send-btn.is-generating:active {
+.capsule-send-btn.is-generating:active,
+.capsule-mic-btn.is-active-recording:active {
     transform: scale(0.95);
 }
 
@@ -875,31 +878,6 @@ html, body {
     font-size: 16px;
 }
 
-/* Active Mic Button (Transforms into Stop button while recording) */
-.capsule-mic-btn.is-active-recording {
-    background: #000000;
-    color: #ffffff;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
-    animation: micPulse 1.8s ease-in-out infinite;
-}
-
-.capsule-mic-btn.is-active-recording:hover {
-    background: #111111;
-    color: #ffffff;
-}
-
-.capsule-mic-btn.is-active-recording .material-symbols-outlined {
-    font-size: 22px;
-}
-
-@keyframes micPulse {
-    0%, 100% {
-        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.20);
-    }
-    50% {
-        box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35);
-    }
-}
 
 /* ==============================================================
    Input Area Layout: Ambient Gradient Fade & Generous Spacing

@@ -213,13 +213,15 @@ export class VoiceInputManager {
         if (this.voiceStatusLeft) {
             this.voiceStatusLeft.style.display = 'flex';
         }
-        if (this.micBtnIcon) {
-            this.micBtnIcon.textContent = 'stop';
-        }
         if (this.micBtn) {
             this.micBtn.classList.add('is-active-recording');
             this.micBtn.title = 'Stop recording (keep text)';
             this.micBtn.setAttribute('aria-label', 'Stop voice recording');
+            this.micBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" class="send-stop-icon" aria-hidden="true">
+                    <rect x="4" y="4" width="16" height="16" rx="3.5" fill="currentColor"/>
+                </svg>
+            `;
         }
 
         // Set listening placeholder if input is empty
@@ -513,13 +515,12 @@ export class VoiceInputManager {
         if (this.voiceStatusLeft) {
             this.voiceStatusLeft.style.display = 'none';
         }
-        if (this.micBtnIcon) {
-            this.micBtnIcon.textContent = 'mic';
-        }
         if (this.micBtn) {
             this.micBtn.classList.remove('is-active-recording');
             this.micBtn.title = 'Start voice query';
             this.micBtn.setAttribute('aria-label', 'Start voice input');
+            this.micBtn.innerHTML = `<span class="material-symbols-outlined" id="mic-btn-icon">mic</span>`;
+            this.micBtnIcon = this.micBtn.querySelector('#mic-btn-icon');
         }
 
         if (this.chatInput) {
