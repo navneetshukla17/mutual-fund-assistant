@@ -10,33 +10,25 @@ except ImportError:
 
 import os
 import gradio as gr
-from src.main import app, store
 from src.agent import handle_query
+from src.main import store
 
-# 1. ZeroGPU Probe function required for ZeroGPU startup check
+# Inference function decorated with @spaces.GPU for Hugging Face ZeroGPU
 @spaces.GPU
-def _zero_gpu_probe():
-    return True
-
-# 2. Main inference function decorated with @spaces.GPU
-@spaces.GPU
-def gradio_chat(message, history):
+def chat_fn(message, history):
     return handle_query(message, store)
 
-# 3. Gradio Blocks with explicit event binding so ZeroGPU event scanner registers it
-with gr.Blocks(title="Axis Mutual Fund Assistant") as demo:
-    gr.Markdown("### Axis Mutual Fund Assistant\nFactual RAG assistant for Axis Mutual Fund schemes.")
-    chatbot = gr.ChatInterface(fn=gradio_chat)
-    dummy_btn = gr.Button("Probe", visible=False)
-    dummy_btn.click(fn=_zero_gpu_probe, outputs=[])
-
-# Mount Gradio onto the existing FastAPI app
-# Root / continues to serve your custom Material Web UI (with voice transcription)
-# /gradio serves the Gradio ChatInterface
-# /api/chat, /api/transcribe, /api/health are served directly by FastAPI
-app = gr.mount_gradio_app(app, demo, path="/gradio")
+# Built-in Gradio ChatInterface
+demo = gr.ChatInterface(
+    fn=chat_fn,
+    title="Axis Mutual Fund Assistant",
+    description="Factual RAG assistant for Axis Mutual Fund schemes (Large Cap, Flexi Cap, Small Cap, ELSS, Liquid).",
+    examples=[
+        "What is the exit load for Axis Bluechip Fund?",
+        "What is the lock-in period for Axis ELSS Tax Saver Fund?",
+        "What is the minimum SIP investment for Axis Small Cap Fund?"
+    ]
+)
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 7860))
-    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
+    demo.launch()
