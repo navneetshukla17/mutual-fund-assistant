@@ -3,6 +3,16 @@ import gradio as gr
 from src.main import app, store
 from src.agent import handle_query
 
+# Defensive handler for Hugging Face ZeroGPU runtime
+try:
+    import spaces
+    @spaces.GPU
+    def _zero_gpu_init():
+        return True
+    _zero_gpu_init()
+except Exception:
+    pass
+
 def gradio_chat(message, history):
     return handle_query(message, store)
 
@@ -22,4 +32,4 @@ app = gr.mount_gradio_app(app, demo, path="/gradio")
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 7860))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
