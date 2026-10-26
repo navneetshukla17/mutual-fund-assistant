@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 gradio
+spaces
 google-genai
 chromadb
 pymupdf

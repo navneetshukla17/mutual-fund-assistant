@@ -1,18 +1,22 @@
 import os
 import gradio as gr
+
+# Support Hugging Face ZeroGPU environment with graceful fallback
+try:
+    import spaces
+except ImportError:
+    class spaces:
+        @staticmethod
+        def GPU(func=None, **kwargs):
+            if func is None:
+                return lambda f: f
+            return func
+
 from src.main import app, store
 from src.agent import handle_query
 
-# Defensive handler for Hugging Face ZeroGPU runtime
-try:
-    import spaces
-    @spaces.GPU
-    def _zero_gpu_init():
-        return True
-    _zero_gpu_init()
-except Exception:
-    pass
-
+# ZeroGPU decorator on the main chat handler
+@spaces.GPU
 def gradio_chat(message, history):
     return handle_query(message, store)
 
