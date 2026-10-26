@@ -3,7 +3,15 @@
  * Implements real-time speech recognition (Web Speech API)
  * with live real-time transcription directly into the prompt window (textarea)
  * and an Apple Intelligence-style subtle ambient card edge aura.
- * Dynamically adapts between English and Hindi on the fly without any manual button.
+ * 
+ * Supports both Desktop and Mobile devices seamlessly:
+ * - On Mobile: avoids microphone resource contention with AudioContext/getUserMedia,
+ *   synchronously activates speech recognition to preserve mobile user gestures,
+ *   and handles Android Chrome utterance boundaries with seamless auto-restart.
+ * - On Desktop: combines Web Speech API with Web Audio API FFT visualizer.
+ * - Universal Fallback: MediaRecorder + Gemini multimodal speech-to-text (/api/transcribe)
+ *   for browsers without native Web Speech API (iOS Chrome, Firefox, etc.).
+ * - Dynamically adapts between English, Hindi, and Hinglish.
  */
 
 export class VoiceInputManager {
@@ -51,12 +59,20 @@ export class VoiceInputManager {
         this.confirmedTranscript = '';
         this.interimTranscript = '';
         this.prefixText = '';
+        this.restartTimer = null;
+        this.isMobile = this.checkIsMobile();
 
-        // Web Audio API & Ambient Aura
+        // Web Audio API & Ambient Aura (Desktop only to prevent mobile mic lock)
         this.audioContext = null;
         this.analyser = null;
         this.mediaStream = null;
         this.animFrameId = null;
+
+        // MediaRecorder Fallback State (for browsers without Web Speech API)
+        this.mediaRecorder = null;
+        this.audioChunks = [];
+        this.recordedMimeType = '';
+        this.isUsingMediaRecorderFallback = false;
 
         // Speech Recognition setup
         const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -68,12 +84,23 @@ export class VoiceInputManager {
     }
 
     /**
+     * Check if device is a mobile or touch-enabled phone/tablet
+     */
+    checkIsMobile() {
+        if (typeof navigator === 'undefined') return false;
+        const ua = navigator.userAgent || '';
+        return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
+               (navigator.maxTouchPoints > 1 && !window.MSStream);
+    }
+
+    /**
      * Bind click and keyboard events
      */
     bindEvents() {
         // Toggle mic on/off when clicked
         if (this.micBtn) {
-            this.micBtn.addEventListener('click', () => {
+            this.micBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 if (this.isActive) {
                     this.stopRecording({ discard: false });
                 } else {
@@ -84,14 +111,16 @@ export class VoiceInputManager {
 
         // Cancel voice input (X) button
         if (this.voiceCancelBtn) {
-            this.voiceCancelBtn.addEventListener('click', () => {
+            this.voiceCancelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 this.stopRecording({ discard: true });
             });
         }
 
         // Error banner dismiss
         if (this.errorDismissBtn) {
-            this.errorDismissBtn.addEventListener('click', () => {
+            this.errorDismissBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 this.hideError();
             });
         }
@@ -135,7 +164,7 @@ export class VoiceInputManager {
     }
 
     /**
-     * Dynamically adapt recognition language on the fly
+     * Dynamically adapt recognition language on the fly without interrupting ongoing speech
      * @param {string} newLang - 'en-IN' or 'hi-IN'
      */
     adaptLanguage(newLang) {
@@ -145,24 +174,24 @@ export class VoiceInputManager {
             localStorage.setItem('voice_input_lang', newLang);
         } catch (e) {}
 
-        if (this.recognition && this.isActive) {
-            try {
-                this.recognition.abort();
-                this.recognition.lang = newLang;
-                this.recognition.start();
-            } catch (e) {
-                // Ignore transient restart errors
-            }
+        if (this.recognition) {
+            this.recognition.lang = newLang;
         }
     }
 
     /**
      * Start the voice input recording session
      */
-    async startRecording() {
+    startRecording() {
         this.hideError();
+        this.isMobile = this.checkIsMobile();
 
-        if (!this.speechSupported) {
+        const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.speechSupported = Boolean(SpeechRecognitionClass);
+
+        const hasMediaRecorder = Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+
+        if (!this.speechSupported && !hasMediaRecorder) {
             this.showError('Voice transcription is not supported in this browser. Please use Chrome, Safari, or Edge.');
             return;
         }
@@ -172,6 +201,7 @@ export class VoiceInputManager {
         this.confirmedTranscript = '';
         this.interimTranscript = '';
         this.prefixText = (this.chatInput ? this.chatInput.value : '').trim();
+        this.isUsingMediaRecorderFallback = false;
 
         // UI recording state
         if (this.inputForm) {
@@ -197,15 +227,28 @@ export class VoiceInputManager {
             this.chatInput.placeholder = 'Listening... Speak your query';
         }
 
-        // Start subtle Apple Intelligence-style ambient edge aura
-        await this.startAudioVisualizer();
+        // IMPORTANT MOBILE AUDIO ARCHITECTURE:
+        // 1. On Android/iOS Mobile: Opening getUserMedia locks the hardware microphone interface
+        //    exclusively, which starves Web Speech API (Google Speech Services) of audio.
+        //    Therefore on mobile, we DO NOT open getUserMedia for visualizer. Instead, the CSS
+        //    ambientAuraPulse keyframe provides a 60fps Apple Intelligence glow without mic lock!
+        // 2. On Desktop: macOS and Windows audio servers multiplex microphone capture cleanly,
+        //    so we can run Web Speech API and the Web Audio API visualizer simultaneously.
+        // 3. User Activation: startSpeechRecognition() is called synchronously right now
+        //    during the click event, preserving the transient user gesture on mobile Chrome.
 
-        // Start real-time speech recognition
-        this.startSpeechRecognition();
+        if (this.speechSupported) {
+            this.startSpeechRecognition();
+            if (!this.isMobile) {
+                this.startAudioVisualizer();
+            }
+        } else {
+            this.startMediaRecorderFallback();
+        }
     }
 
     /**
-     * Start or restart Web Speech Recognition
+     * Start Web Speech Recognition with mobile-friendly configuration
      */
     startSpeechRecognition() {
         if (!this.speechSupported) return;
@@ -219,10 +262,13 @@ export class VoiceInputManager {
 
             const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
             this.recognition = new SpeechRecognitionClass();
-            this.recognition.continuous = true;
+            
+            // On mobile devices, continuous = true breaks Google Speech Services and prevents interimResults.
+            // Setting continuous = false on mobile with seamless restart on 'onend' ensures 100% reliability.
+            this.recognition.continuous = !this.isMobile;
             this.recognition.interimResults = true;
             this.recognition.maxAlternatives = 1;
-            this.recognition.lang = this.currentLang;
+            this.recognition.lang = this.currentLang || 'en-IN';
 
             this.recognition.onstart = () => {
                 this.isRecognitionRunning = true;
@@ -259,34 +305,137 @@ export class VoiceInputManager {
             this.recognition.onerror = (event) => {
                 console.warn('Speech recognition warning/error:', event.error);
                 if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                    this.showError('Microphone permission blocked. Please click the lock icon in your address bar to allow microphone access.');
+                    this.showError('Microphone permission blocked. Please allow microphone access in your browser settings.');
                     this.stopRecording({ discard: false });
                 } else if (event.error === 'network') {
-                    this.showError('Speech recognition network error. Please check your internet connection.');
-                    this.stopRecording({ discard: false });
+                    if (!this.confirmedTranscript && !this.interimTranscript) {
+                        console.warn('Speech recognition network error; switching to MediaRecorder fallback.');
+                        this.startMediaRecorderFallback();
+                    }
                 } else if (event.error === 'audio-capture') {
                     this.showError('Microphone not detected or in use by another application.');
                     this.stopRecording({ discard: false });
                 } else if (event.error === 'no-speech') {
-                    // Timeout with no speech detected; don't terminate abruptly
+                    // Timeout with no speech detected; keep session alive if still active
                 }
             };
 
             this.recognition.onend = () => {
                 this.isRecognitionRunning = false;
-                // If user didn't abort and is still recording, restart recognition
+                // If user didn't abort and is still recording, restart recognition cleanly
                 if (this.isActive && !this.isUserAborted) {
-                    try {
-                        this.recognition.start();
-                    } catch (e) {
-                        // Ignore already started errors
+                    if (this.restartTimer) {
+                        clearTimeout(this.restartTimer);
                     }
+                    this.restartTimer = setTimeout(() => {
+                        if (this.isActive && !this.isUserAborted && !this.isRecognitionRunning) {
+                            try {
+                                if (this.recognition) {
+                                    this.recognition.lang = this.currentLang || 'en-IN';
+                                    this.recognition.start();
+                                }
+                            } catch (e) {
+                                // Ignore already started or aborting errors
+                            }
+                        }
+                    }, 50);
                 }
             };
 
             this.recognition.start();
         } catch (err) {
             console.warn('Recognition start exception:', err);
+            if (this.isActive) {
+                this.startMediaRecorderFallback();
+            }
+        }
+    }
+
+    /**
+     * MediaRecorder Fallback (Universal audio recording + Gemini speech-to-text API)
+     * Used for browsers without native Web Speech API (iOS Chrome, Firefox, etc.)
+     */
+    async startMediaRecorderFallback() {
+        this.isUsingMediaRecorderFallback = true;
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+                this.showError('Microphone access is not supported in this browser.');
+                this.stopRecording({ discard: false });
+                return;
+            }
+
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+
+            // Detect supported container & codec
+            let mimeType = 'audio/webm';
+            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                mimeType = 'audio/webm;codecs=opus';
+            } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                mimeType = 'audio/mp4';
+            } else if (MediaRecorder.isTypeSupported('audio/aac')) {
+                mimeType = 'audio/aac';
+            } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+                mimeType = 'audio/ogg';
+            }
+
+            this.recordedMimeType = mimeType;
+            this.audioChunks = [];
+            this.mediaRecorder = new MediaRecorder(this.mediaStream, mimeType ? { mimeType } : {});
+
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    this.audioChunks.push(event.data);
+                }
+            };
+
+            this.mediaRecorder.start(250);
+
+            if (!this.isMobile) {
+                this.startAudioVisualizer(this.mediaStream);
+            }
+        } catch (err) {
+            console.warn('MediaRecorder fallback exception:', err);
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                this.showError('Microphone permission was denied. Please allow mic access in your browser.');
+            } else {
+                this.showError('Unable to access microphone. Please check your browser permissions.');
+            }
+            this.stopRecording({ discard: false });
+        }
+    }
+
+    /**
+     * Send recorded audio chunks to Gemini /api/transcribe endpoint
+     */
+    async transcribeAudioChunks() {
+        if (!this.audioChunks || this.audioChunks.length === 0) return '';
+        try {
+            const blob = new Blob(this.audioChunks, { type: this.recordedMimeType || 'audio/webm' });
+            if (blob.size < 100) return '';
+
+            const response = await fetch('/api/transcribe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': blob.type || 'audio/webm'
+                },
+                body: blob
+            });
+
+            if (!response.ok) {
+                return '';
+            }
+
+            const data = await response.json();
+            return (data.transcript || '').trim();
+        } catch (e) {
+            console.warn('Transcription API error:', e);
+            return '';
         }
     }
 
@@ -324,14 +473,30 @@ export class VoiceInputManager {
      * Stop the recording session
      * @param {Object} options - { discard: boolean }
      */
-    stopRecording({ discard = false } = {}) {
+    async stopRecording({ discard = false } = {}) {
         this.isActive = false;
         this.isUserAborted = true;
+
+        if (this.restartTimer) {
+            clearTimeout(this.restartTimer);
+            this.restartTimer = null;
+        }
 
         if (this.recognition) {
             try {
                 this.recognition.stop();
             } catch (e) {}
+        }
+
+        let pendingTranscription = null;
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+            try {
+                this.mediaRecorder.stop();
+            } catch (e) {}
+
+            if (!discard && (!this.confirmedTranscript && !this.interimTranscript)) {
+                pendingTranscription = this.transcribeAudioChunks();
+            }
         }
 
         this.stopAudioVisualizer();
@@ -382,29 +547,63 @@ export class VoiceInputManager {
             const textLen = this.chatInput.value.length;
             this.chatInput.setSelectionRange(textLen, textLen);
         }
+
+        // If server transcription is pending from MediaRecorder fallback, await and sync it
+        if (pendingTranscription) {
+            if (this.chatInput && !this.chatInput.value.trim()) {
+                this.chatInput.placeholder = 'Transcribing voice audio...';
+            }
+            try {
+                const serverTranscript = await pendingTranscription;
+                if (serverTranscript && !discard) {
+                    const fullText = (this.prefixText ? this.prefixText + ' ' : '') + serverTranscript;
+                    if (this.chatInput) {
+                        this.chatInput.value = fullText.trim();
+                        this.chatInput.placeholder = 'Ask mutual fund assistant...';
+                        if (this.autoResizeTextarea) this.autoResizeTextarea();
+                        if (this.updateSendButtonState) this.updateSendButtonState();
+                        this.chatInput.focus();
+                        const len = this.chatInput.value.length;
+                        this.chatInput.setSelectionRange(len, len);
+                    }
+                }
+            } catch (err) {
+                console.warn('Server transcription completion error:', err);
+            } finally {
+                if (this.chatInput) {
+                    this.chatInput.placeholder = 'Ask mutual fund assistant...';
+                }
+            }
+        }
     }
 
     /**
      * Web Audio API: Apple Intelligence-Style Subtle Ambient Card Edge Aura
-     * Smooth, non-distracting organic glow modulation with spring damping
+     * Smooth, non-distracting organic glow modulation with spring damping (Desktop)
      */
-    async startAudioVisualizer() {
+    async startAudioVisualizer(existingStream = null) {
         try {
             const AudioContextClass = window.AudioContext || window.webkitAudioContext;
             if (!AudioContextClass) return;
 
-            this.audioContext = new AudioContextClass();
+            if (!this.audioContext || this.audioContext.state === 'closed') {
+                this.audioContext = new AudioContextClass();
+            }
             if (this.audioContext.state === 'suspended') {
                 await this.audioContext.resume();
             }
 
-            this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
-            });
+            if (existingStream) {
+                this.mediaStream = existingStream;
+            } else if (!this.mediaStream) {
+                this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+            }
 
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = 64; // 32 frequency bins
@@ -459,10 +658,6 @@ export class VoiceInputManager {
             renderAura();
         } catch (err) {
             console.warn('Audio visualizer error:', err);
-            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                this.showError('Microphone permission was denied. Please allow mic access in your browser.');
-                this.stopRecording({ discard: false });
-            }
         }
     }
 
