@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>Mutual Fund Assistant</title>
+    <!-- Google Fonts: Geist, Geist Mono (Handoff AI Exact Typography) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined" rel="stylesheet">
+</head>
+<body>
+    <div id="app" class="state-initial">
+        <!-- Elevated Brand Header: Center Aligned, Two-Tone, Prominent Logo -->
+        <header class="app-header">
+            <div class="header-brand">
+                <svg class="header-logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <circle cx="9" cy="12" r="6" stroke="#10a37f" stroke-width="2.5" fill="none"/>
+                    <circle cx="15" cy="12" r="6" stroke="#34d399" stroke-width="2.5" fill="none"/>
+                    <path d="M12 7.8C13.5 9 14.2 10.5 14.2 12C14.2 13.5 13.5 15 12 16.2C10.5 15 9.8 13.5 9.8 12C9.8 10.5 10.5 9 12 7.8Z" fill="#10a37f"/>
+                </svg>
+                <h1 class="header-title">
+                    <span class="title-primary">Mutual Fund</span> <span class="title-accent">Assistant</span>
+                </h1>
+            </div>
+        </header>
+
+        <!-- Main Chat Area (Full-width on Desktop so scrollbar is at the screen border) -->
+        <main id="chat-container">
+            <div id="chat-history">
+                <!-- Clean Minimalist Home Hero (Handoff AI / Bricolage Grotesque Style) -->
+                <div class="welcome-message" id="welcome-message">
+                    <div class="welcome-hero-group">
+                        <div class="welcome-sparkle" aria-hidden="true">
+                            <svg class="sparkle-icon" viewBox="0 0 74 74" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <!-- Small teal star on top-left -->
+                                <path d="M 13.0 3.5 Q 16.5 0.0 20.0 3.5 Q 22.0 11.0 29.5 13.0 Q 33.0 16.5 29.5 20.0 Q 22.0 22.0 20.0 29.5 Q 16.5 33.0 13.0 29.5 Q 11.0 22.0 3.5 20.0 Q 0.0 16.5 3.5 13.0 Q 11.0 11.0 13.0 3.5 Z" fill="#10a37f" />
+                                <!-- Large mint star on bottom-right -->
+                                <path d="M 42.5 24.5 Q 46.5 20.5 50.5 24.5 Q 55.0 38.0 68.5 42.5 Q 72.5 46.5 68.5 50.5 Q 55.0 55.0 50.5 68.5 Q 46.5 72.5 42.5 68.5 Q 38.0 55.0 24.5 50.5 Q 20.5 46.5 24.5 42.5 Q 38.0 38.0 42.5 24.5 Z" fill="#34d399" />
+                            </svg>
+                        </div>
+                        <h2 class="welcome-title" id="welcome-title">How can I assist you today?</h2>
+                    </div>
+                    
+                    <!-- Desktop Center Slot for Input Block -->
+                    <div id="center-input-slot" class="center-input-slot"></div>
+
+                    <!-- Suggestion List (Underneath Input on Desktop, Docked Above Input on Mobile) -->
+                    <div class="suggestions" id="suggestions-container"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Floating Input Area with Subtle Gradient Fade and Generous Bottom Breathing Room -->
+        <footer class="input-area" id="bottom-input-area">
+            <div id="bottom-input-slot" class="bottom-input-slot">
+                <!-- Chat Input Block (Includes Permanent Disclaimer + Unified Input Card) -->
+                <div id="chat-input-block" class="chat-input-block">
+                    <div class="permanent-disclaimer" id="permanent-disclaimer">
+                        Facts-only. No investment advice. Check sources attached.
+                    </div>
+                    <form id="chat-input-form" class="chat-capsule handoff-input-card" onsubmit="return false;">
+                        <!-- Inline notification banner for mic permission or connection errors -->
+                        <div id="voice-error-banner" class="voice-error-banner" style="display: none;" role="alert">
+                            <span class="material-symbols-outlined voice-error-icon" aria-hidden="true">mic_off</span>
+                            <span id="voice-error-text" class="voice-error-text"></span>
+                            <button type="button" id="voice-error-dismiss" class="voice-error-dismiss" aria-label="Dismiss notification">
+                                <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                            </button>
+                        </div>
+
+                        <div class="capsule-inner-row">
+                            <!-- Standard tools subgroup container (retained for clean extensible docking) -->
+                            <div id="normal-tools-left" class="tools-subgroup" style="display: none;"></div>
+
+                            <!-- Voice recording live indicator (shown when recording) -->
+                            <div id="voice-status-left" class="tools-subgroup voice-recording-status" style="display: none;">
+                                <span class="voice-live-badge" title="Recording active" aria-label="Recording active">
+                                    <span class="voice-live-dot"></span>
+                                    <span class="voice-live-ping"></span>
+                                </span>
+                                <button type="button" id="voice-cancel-btn" class="tool-btn voice-cancel-btn" title="Discard voice input" aria-label="Discard voice input">
+                                    <span class="material-symbols-outlined">close</span>
+                                </button>
+                            </div>
+
+                            <div class="capsule-input-box">
+                                <textarea 
+                                    id="chat-input" 
+                                    class="capsule-input" 
+                                    placeholder="Ask mutual fund assistant..." 
+                                    rows="1"
+                                    autocomplete="off" 
+                                    autocorrect="off" 
+                                    autocapitalize="off" 
+                                    aria-label="Ask mutual fund assistant"
+                                ></textarea>
+                            </div>
+
+                            <div class="capsule-tools-right">
+                                <button type="button" id="mic-btn" class="capsule-mic-btn" title="Start voice query" aria-label="Start voice input">
+                                    <span class="material-symbols-outlined" id="mic-btn-icon">mic</span>
+                                </button>
+                                <button type="button" id="send-btn" class="capsule-send-btn" aria-label="Send message" disabled>
+                                    <span class="material-symbols-outlined">arrow_upward</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </footer>
+
+        <!-- Elevated Disclaimer Modal (Option 3 Design + Option 1 Content) -->
+        <div id="disclaimer-backdrop" class="disclaimer-backdrop" aria-hidden="true">
+            <div id="disclaimer-sheet" class="disclaimer-sheet" role="dialog" aria-modal="true" aria-labelledby="disclaimer-title">
+                
+                <div class="disclaimer-brand-lockup">
+                    <svg class="disclaimer-brand-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <circle cx="9" cy="12" r="6" stroke="#10a37f" stroke-width="2.5" fill="none"/>
+                        <circle cx="15" cy="12" r="6" stroke="#34d399" stroke-width="2.5" fill="none"/>
+                        <path d="M12 7.8C13.5 9 14.2 10.5 14.2 12C14.2 13.5 13.5 15 12 16.2C10.5 15 9.8 13.5 9.8 12C9.8 10.5 10.5 9 12 7.8Z" fill="#10a37f"/>
+                    </svg>
+                    <span class="disclaimer-brand-text">
+                        <span class="title-primary">Mutual Fund</span> <span class="title-accent">Assistant</span>
+                    </span>
+                </div>
+
+                <div class="disclaimer-header">
+                    <h2 id="disclaimer-title" class="disclaimer-title">Before you begin</h2>
+                    <p class="disclaimer-subtitle">A quick reminder on how this assistant works</p>
+                </div>
+
+                <div class="disclaimer-steps">
+                    <!-- Step 01: SEBI & AMC Official Sources Only -->
+                    <div class="disclaimer-step-item">
+                        <span class="step-num" aria-hidden="true">01</span>
+                        <div class="step-content">
+                            <h3 class="step-title">SEBI &amp; AMC Official Sources Only</h3>
+                            <p class="step-desc">Directly cited from official Scheme Information Documents (SID), KIM, and statutory filings.</p>
+                        </div>
+                    </div>
+
+                    <!-- Step 02: Zero Investment Advice -->
+                    <div class="disclaimer-step-item">
+                        <span class="step-num" aria-hidden="true">02</span>
+                        <div class="step-content">
+                            <h3 class="step-title">Zero Investment Advice</h3>
+                            <p class="step-desc">No return predictions, portfolio advice, or buy/sell recommendations. Check sources before deciding.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="disclaimer-footer">
+                    <button id="btn-got-it" class="disclaimer-btn-primary" type="button">Got it</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

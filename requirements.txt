@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+google-genai
+chromadb
+pymupdf
+beautifulsoup4
+pandas
+python-dotenv
+pytest
+httpx
+requests
