@@ -17,7 +17,7 @@ os.makedirs("frontend/dist", exist_ok=True)
 class ChatRequest(BaseModel):
     message: str
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health_endpoint():
     return {"status": "ok", "app": "mutual-fund-assistant"}
 
